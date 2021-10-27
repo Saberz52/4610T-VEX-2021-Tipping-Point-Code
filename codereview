@@ -1,0 +1,360 @@
+//enjoy this plaintext since it won't let me commit the file 
+/*----------------------------------------------------------------------------*/
+/*                                                                            */
+/*    Module:       main.cpp                                                  */
+/*    Author:       VEX                                                       */
+/*    Created:      Thu Sep 26 2019                                           */
+/*    Description:  Competition Template                                      */
+/*                                                                            */
+/*----------------------------------------------------------------------------*/
+
+// ---- START VEXCODE CONFIGURED DEVICES ----
+// Robot Configuration:
+// [Name]               [Type]        [Port(s)]
+// Controller1          controller                    
+// FRONTL               motor         20              
+// FRONTR               motor         19              
+// BACKL                motor         4               
+// BACKR                motor         3               
+// Intake               motor         5               
+// Gyro                 inertial      17              
+// Clamp                motor         9               
+// Lift                 motor         10              
+// FrontMogoClamp       digital_out   H               
+// ---- END VEXCODE CONFIGURED DEVICES ----
+
+#include "vex.h"
+
+using namespace vex;
+
+//values
+
+// A global instance of competition
+competition Competition;
+
+//values
+double kP = 0.3;
+double kI = 0.0;
+double kD = 0.0;
+double turnkP = 0;
+double turnkI = 0;
+double turnkD = 0;
+
+//define values
+int desiredValue = 0;
+int desiredTurnValue = 0;
+
+int error; //SValue - DValue : Pos
+int prevError = 0; //Position sleep time miliseconds ago
+int derivative; // error - prevError : Speed
+int totalError = 0; //totalError = totalError + error
+
+int turnError; //SValue - DValue : Pos
+int turnPrevError = 0; //Pos 20 miliseconds ago
+int turnDerivative; // error - prevError : Speed
+int turnTotalError = 0; //totalError = totalError + error
+
+bool resetDriveSensors = false;
+
+//Variables modified for use
+bool enableDrivePID = true;
+
+int drivePID(){
+  
+  while(enableDrivePID){
+
+    if (resetDriveSensors) {
+      resetDriveSensors = false;
+      FRONTR.setPosition(0,degrees);
+      BACKR.setPosition(0,degrees);
+      FRONTL.setPosition(0,degrees);
+      BACKL.setPosition(0,degrees);
+    }
+
+
+    //Get the position of both motors
+    int leftMotorPosition = BACKL.position(degrees);
+    int rightMotorPosition = BACKR.position(degrees);
+
+    ///////////////////////////////////////////
+    //Lateral movement PID
+    /////////////////////////////////////////////////////////////////////
+    //Get average of the two motors
+    int averagePosition = (leftMotorPosition + rightMotorPosition)/2;
+
+    //Potential
+    error = averagePosition - desiredValue;
+
+    //Derivative
+    derivative = error - prevError;
+
+    //Integral
+    totalError += error;
+
+    double lateralMotorPower = error * kP + derivative * kD + totalError * kI;
+    /////////////////////////////////////////////////////////////////////
+
+
+    ///////////////////////////////////////////
+    //Turning movement PID
+    /////////////////////////////////////////////////////////////////////
+    //Get average of the two motors
+    int turnDifference = leftMotorPosition - rightMotorPosition;
+
+    //Potential
+    turnError = turnDifference - desiredTurnValue;
+
+    //Derivative
+    turnDerivative = turnError - turnPrevError;
+
+    //Integral
+    turnTotalError += turnError;
+
+    double turnMotorPower = turnError * turnkP + turnDerivative * turnkD + turnTotalError * turnkI;
+    /////////////////////////////////////////////////////////////////////
+
+    FRONTL.spin(reverse, lateralMotorPower + turnMotorPower, voltageUnits::volt);
+    BACKL.spin(reverse, lateralMotorPower + turnMotorPower, voltageUnits::volt);
+
+    FRONTR.spin(reverse, lateralMotorPower - turnMotorPower, voltageUnits::volt); 
+    BACKR.spin(reverse, lateralMotorPower - turnMotorPower, voltageUnits::volt);   
+
+
+    
+
+    prevError = error;
+    turnPrevError = turnError;
+    vex::task::sleep(20);
+
+  }
+
+  return 1;
+}
+// define your global instances of motors and other devices here
+
+/*---------------------------------------------------------------------------*/
+/*                          Pre-Autonomous Functions                         */
+/*                                                                           */
+/*  You may want to perform some actions before the competition starts.      */
+/*  Do them in the following function.  You must return from this function   */
+/*  or the autonomous and usercontrol tasks will not be started.  This       */
+/*  function is only called once after the V5 has been powered on and        */
+/*  not every time that the robot is disabled.                               */
+/*---------------------------------------------------------------------------*/
+
+void pre_auton(void) {
+  // Initializing Robot Configuration. DO NOT REMOVE!
+  vexcodeInit();
+
+  // All activities that occur before the competition starts
+  // Example: clearing encoders, setting servo positions, ...
+}
+
+/*---------------------------------------------------------------------------*/
+/*                                                                           */
+/*                              Autonomous Task                              */
+/*                                                                           */
+/*  This task is used to control your robot during the autonomous phase of   */
+/*  a VEX Competition.                                                       */
+/*                                                                           */
+/*  You must modify the code to add your own robot specific commands here.   */
+/*---------------------------------------------------------------------------*/
+
+//length is desired length in inches, direct is direction. positive is forward, negative is backwards
+
+
+//spins both the intakes and the rollers based on the sign of direction
+void intakeall(int direct)
+{
+  Intake.setVelocity(100, velocityUnits::pct);
+
+  if(direct > 0)
+  {
+    Intake.spin(fwd);
+  }
+  else
+  {
+    Intake.spin(directionType::rev);    
+  }
+}
+
+void stopintake()
+{
+  Intake.setVelocity(0, velocityUnits::pct);
+}
+
+//direct > 0, clamp goes down. else, clamp releases
+void clamp(int direct)
+{
+  Clamp.setVelocity(100, velocityUnits::pct);
+
+  if(direct > 0)
+  {
+    Clamp.spin(fwd);
+  }
+  else
+  {
+    Clamp.spin(directionType::rev);    
+  }
+}
+
+//direct > 0, lift goes up. else, lift goes down
+void lift(int direct)
+{
+  Lift.setVelocity(100, velocityUnits::pct);
+  if(direct > 0)
+  {
+    Lift.spin(fwd);
+  }
+  else
+  {
+    Lift.spin(directionType::rev);    
+  }
+
+}
+
+void autonomous(void) {
+  // ..........................................................................
+  // Insert autonomous user code here.
+  // ..........................................................................
+  
+  vex::task lol(drivePID);
+
+  resetDriveSensors = true;
+  desiredValue = 650;
+  desiredTurnValue = 0;
+  
+}
+
+/*---------------------------------------------------------------------------*/
+/*                                                                           */
+/*                              User Control Task                            */
+/*                                                                           */
+/*  This task is used to control your robot during the user control phase of */
+/*  a VEX Competition.                                                       */
+/*                                                                           */
+/*  You must modify the code to add your own robot specific commands here.   */
+/*---------------------------------------------------------------------------*/
+int deadband = 15;
+void usercontrol(void) {
+  // User control code here, inside the loop
+  while (1) {
+    // Get the velocity percentage of the left motor. (Axis3 + Axis1)
+    int leftMotorSpeed =
+        Controller1.Axis3.position() + Controller1.Axis1.position();
+    // Get the velocity percentage of the right motor. (Axis3 - Axis1)
+    int rightMotorSpeed =
+        Controller1.Axis3.position() - Controller1.Axis1.position();
+
+    // Set the speed of the left motor. If the value is less than the deadband,
+    // set it to zero.
+    if (abs(leftMotorSpeed) < deadband) {
+      // Set the speed to zero.
+      FRONTL.setVelocity(0, percent);
+      BACKL.setVelocity(0, percent);
+    } else {
+      // Set the speed to leftMotorSpeed
+      FRONTL.setVelocity(leftMotorSpeed, percent);
+      BACKL.setVelocity(leftMotorSpeed, percent);
+    }
+
+    // Set the speed of the right motor. If the value is less than the deadband,
+    // set it to zero.
+    if (abs(rightMotorSpeed) < deadband) {
+      // Set the speed to zero
+      FRONTR.setVelocity(0, percent);
+      BACKR.setVelocity(0, percent);
+    } else {
+      // Set the speed to rightMotorSpeed
+      FRONTR.setVelocity(rightMotorSpeed, percent);
+      BACKR.setVelocity(rightMotorSpeed, percent);
+    }
+
+    //Intake controls
+    if(Controller1.ButtonR1.pressing())
+    { //forward
+      Intake.spin(directionType::fwd, 100, velocityUnits::pct); 
+    }
+    else if(Controller1.ButtonR2.pressing())
+    { //release
+      Intake.spin(directionType::rev, 100, velocityUnits::pct);
+    }
+    else
+    {
+      Intake.stop(brakeType::coast);
+    }
+
+    //Clamp controls
+    if(Controller1.ButtonUp.pressing())
+    {
+      Clamp.spin(directionType::fwd, 100, velocityUnits::pct); 
+    }
+    else if(Controller1.ButtonDown.pressing())
+    {
+      Clamp.spin(directionType::rev, 100, velocityUnits::pct);
+    }
+    else
+    {
+      Clamp.stop(brakeType::hold);
+    }
+
+    //Lift Controls
+    if(Controller1.ButtonL1.pressing())
+    {
+      Lift.spin(directionType::fwd, 50, velocityUnits::pct); 
+    }
+    else if(Controller1.ButtonL2.pressing())
+    {
+      Lift.spin(directionType::rev, 50, velocityUnits::pct);
+    }
+    else
+    {
+      Lift.stop(brakeType::hold);
+    }
+
+    //Pnuemkanytic 
+    if(Controller1.ButtonA.pressing())
+    {
+      FrontMogoClamp.set(1);
+    }
+    else if(Controller1.ButtonB.pressing())
+    {
+      FrontMogoClamp.set(0);
+    }
+
+    // Spin both motors in the forward direction.
+    FRONTL.spin(forward);
+    BACKL.spin(forward);
+    FRONTR.spin(forward);
+    BACKR.spin(forward);
+
+    wait(25, msec);
+  }
+    wait(20, msec); // Sleep the task for a short amount of time to
+                    // prevent wasted resources.
+  }
+
+void clamptesting()
+{
+  Controller1.Screen.clearScreen();
+  Controller1.Screen.setCursor(1,1);
+  Controller1.Screen.print("Current = %d", Clamp.current(percentUnits::pct));
+}
+
+
+//
+// Main will set up the competition functions and callbacks.
+//
+int main() {
+  // Set up callbacks for autonomous and driver control periods.
+  Competition.autonomous(autonomous);
+  Competition.drivercontrol(usercontrol);
+  // Run the pre-autonomous function.
+  pre_auton();
+
+  // Prevent main from exiting with an infinite loop.
+  while (true) {
+    clamptesting();
+    wait(100, msec);
+  }
+}
